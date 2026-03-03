@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ENV Vault</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+</head>
+<body>
+
+<!-- ============================================================
+     LOCK SCREEN  (two-step: folder → password)
+     ============================================================ -->
+<div class="lock-screen" id="lockScreen">
+  <div style="font-size:48px">🔐</div>
+  <div class="lock-logo">ENV<span>Vault</span></div>
+
+  <!-- Step 1 – choose vault folder -->
+  <div class="lock-step" id="stepFolder">
+    <div class="lock-subtitle">
+      Choose the folder where your encrypted vault files are (or will be) stored.
+      Nothing leaves your machine.
+    </div>
+    <button class="folder-btn" onclick="chooseFolder()">
+      <span class="folder-icon">📁</span>
+      Choose Vault Folder
+    </button>
+    <div class="lock-error" id="folderError"></div>
+  </div>
+
+  <!-- Step 2 – enter master password (hidden until folder is chosen) -->
+  <div class="lock-step" id="stepPassword" style="display:none">
+    <div class="chosen-folder-hint">
+      Vault folder: <strong id="chosenFolder">—</strong>
+    </div>
+    <div class="lock-subtitle">Enter your master password to decrypt the vault.</div>
+    <div class="lock-form">
+      <input type="password" class="lock-input" id="masterPwInput"
+             placeholder="master password" autocomplete="current-password" />
+      <div class="lock-error" id="passwordError"></div>
+      <button class="lock-btn" onclick="unlock()">Unlock Vault →</button>
+    </div>
+    <button class="btn btn-ghost" style="font-size:11px;margin-top:4px"
+            onclick="resetToFolderStep()">← Change folder</button>
+  </div>
+
+  <div class="lock-note">
+    Each project is stored as an individual AES-GCM encrypted <code>.vault</code> file.<br />
+    Nothing is sent to any server. 🛡️
+  </div>
+</div>
+
+<!-- ============================================================
+     MAIN APP
+     ============================================================ -->
+<div class="app" id="mainApp" style="display:none">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="logo">
+      <div class="logo-icon">🔐</div>
+      <div class="logo-text">ENV<span>Vault</span></div>
+    </div>
+    <div class="sidebar-section">Projects</div>
+    <div class="project-list" id="projectList"></div>
+    <div class="sidebar-actions">
+      <button class="add-project-btn" onclick="showAddProject()">
+        <span>+</span> New Project
+      </button>
+      <button class="add-project-btn import-btn" onclick="showImportProject()" title="Import a .vault file">
+        <span>↑</span> Import
+      </button>
+    </div>
+    <!-- Hidden file input for .vault import -->
+    <input type="file" id="importFileInput" accept=".vault"
+           style="display:none" onchange="onImportFileChosen()" />
+    <div class="sidebar-footer">
+      <div class="status-dot"></div>
+      <span id="footerFolderName" title="Vault folder">Encrypted on disk</span>
+      <span style="margin-left:auto;cursor:pointer;color:var(--warn)"
+            onclick="lockVault()" title="Lock vault">🔒</span>
+    </div>
+  </div>
+
+  <!-- Drag handle between sidebar and main -->
+  <div class="sidebar-resizer" id="sidebarResizer"></div>
+
+  <!-- MAIN CONTENT -->
+  <div class="main">
+    <div class="topbar" id="topbar" style="display:none">
+      <div class="topbar-left">
+        <div class="breadcrumb">vault / <span id="topbarTitle">—</span></div>
+        <div class="raw-toggle">
+          <button class="raw-tab active" id="tabKv"  onclick="setMode('kv')">Key-Value</button>
+          <button class="raw-tab"        id="tabRaw" onclick="setMode('raw')">Raw</button>
+        </div>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn btn-ghost"   onclick="showRenameProject()" title="Rename / edit description">✏️ Rename</button>
+        <button class="btn btn-ghost"   onclick="duplicateProject()" title="Duplicate this project">⧉ Duplicate</button>
+        <button class="btn btn-ghost"   onclick="copyAll()">⎘ Copy All</button>
+        <button class="btn btn-ghost"   onclick="exportEnv()">↓ Export</button>
+        <button class="btn btn-primary" onclick="saveProject()">✓ Save</button>
+        <button class="btn btn-danger"  onclick="deleteProject()">✕</button>
+      </div>
+    </div>
+
+    <div class="content" id="content">
+      <!-- Empty state -->
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">📂</div>
+        <div class="empty-title">No project selected</div>
+        <div class="empty-desc">
+          Create a new project from the sidebar to start managing your .env files securely.
+        </div>
+        <button class="btn btn-primary" onclick="showAddProject()" style="margin-top:8px">
+          + New Project
+        </button>
+      </div>
+
+      <!-- Editor (injected by editor.js) -->
+      <div id="editorArea" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     ADD PROJECT MODAL
+     ============================================================ -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-title">➕ New Project</div>
+    <div class="form-group">
+      <label class="form-label">Project Name</label>
+      <input class="form-input" id="newProjectName" placeholder="e.g. my-next-app" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Description (optional)</label>
+      <input class="form-input" id="newProjectDesc" placeholder="e.g. Production API keys" />
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost"   onclick="closeModal('addModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="addProject()">Create Project</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     RENAME PROJECT MODAL
+     ============================================================ -->
+<div class="modal-overlay" id="renameModal">
+  <div class="modal">
+    <div class="modal-title">✏️ Rename Project</div>
+    <div class="form-group">
+      <label class="form-label">Project Name</label>
+      <input class="form-input" id="renameProjectName" placeholder="e.g. my-next-app" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Description (optional)</label>
+      <input class="form-input" id="renameProjectDesc" placeholder="e.g. Production API keys" />
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost"   onclick="closeModal('renameModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="confirmRenameProject()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     IMPORT .VAULT MODAL
+     ============================================================ -->
+<div class="modal-overlay" id="importModal">
+  <div class="modal">
+    <div class="modal-title">↑ Import .vault File</div>
+    <div class="form-group">
+      <label class="form-label">Vault File</label>
+      <button class="file-pick-btn" onclick="document.getElementById('importFileInput').click()">
+        <span>📂</span>
+        <span id="importFileName">No file chosen</span>
+      </button>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Decryption Password</label>
+      <input class="form-input" type="password" id="importPwInput"
+             placeholder="password used to encrypt this file" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Project Name</label>
+      <input class="form-input" id="importNameInput" placeholder="e.g. my-next-app" />
+    </div>
+    <div class="lock-error" id="importError" style="min-height:18px;margin-top:4px"></div>
+    <div class="form-actions">
+      <button class="btn btn-ghost"   onclick="closeModal('importModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="importProject()">↑ Import</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     TOAST NOTIFICATION
+     ============================================================ -->
+<div class="toast" id="toast">
+  <span class="t-icon">✓</span>
+  <span id="toastMsg">Copied to clipboard</span>
+</div>
+
+<!-- ============================================================
+     SCRIPTS  (order matters: dependencies first)
+     ============================================================ -->
+<script src="crypto.js"></script>
+<script src="storage.js"></script>
+<script src="ui.js"></script>
+<script src="sidebar.js"></script>
+<script src="editor.js"></script>
+<script src="projects.js"></script>
+<script src="auth.js"></script>
+
+<!-- Bootstrap: event wiring that needs the DOM to be ready -->
+<script>
+  // Close modal when clicking the overlay backdrop
+  $('#addModal').on('click', function (e) {
+    if (e.target === this) closeModal('addModal');
+  });
+
+  // Submit new project on Enter key
+  $('#newProjectName').on('keydown', e => {
+    if (e.key === 'Enter') addProject();
+  });
+
+  // Close import modal on backdrop click
+  $('#importModal').on('click', function (e) {
+    if (e.target === this) closeModal('importModal');
+  });
+
+  // Close rename modal on backdrop click
+  $('#renameModal').on('click', function (e) {
+    if (e.target === this) closeModal('renameModal');
+  });
+
+  // Submit rename on Enter key
+  $('#renameProjectName, #renameProjectDesc').on('keydown', e => {
+    if (e.key === 'Enter') confirmRenameProject();
+  });
+
+  // Submit import on Enter key (from password or name field)
+  $('#importPwInput, #importNameInput').on('keydown', e => {
+    if (e.key === 'Enter') importProject();
+  });
+
+  /** Go back to the folder-selection step. */
+  function resetToFolderStep() {
+    $('#stepFolder').css('display', 'flex');
+    $('#stepPassword').hide();
+    $('#masterPwInput').val('');
+    $('#passwordError').text('');
+  }
+</script>
+
+</body>
+</html>
