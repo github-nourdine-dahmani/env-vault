@@ -110,28 +110,124 @@ body::before {
 .project-list::-webkit-scrollbar-track { background: transparent; }
 .project-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-.project-item {
-  padding: 10px 12px;
+/* ── Group blocks ──────────────────────────────────────────────────────────── */
+.group-block { margin-bottom: 6px; }
+
+.group-header {
+  padding: 9px 10px;
   border-radius: 6px;
   cursor: pointer;
-  transition: all .15s;
+  transition: background .15s, border-color .15s;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  gap: 6px;
+  user-select: none;
+  /* Distinct background + left accent bar */
+  background: var(--surface2);
+  border-left: 3px solid #7c3aed;
   margin-bottom: 2px;
 }
 
-.project-item:hover { background: var(--surface2); }
-.project-item.active { background: rgba(0,255,136,.08); border: 1px solid rgba(0,255,136,.2); }
-.project-item.drag-over { border-top: 2px solid var(--accent); }
-.project-item.dragging  { opacity: .35; }
+.group-header:hover {
+  background: #1f1f2e;
+  border-left-color: #a78bfa;
+}
 
+.group-block.drag-over-group > .group-header {
+  border-top: 2px solid #a78bfa;
+  border-left-color: #a78bfa;
+}
+
+.group-block.dragging { opacity: .35; }
+
+.group-chevron {
+  font-size: 10px;
+  color: #a78bfa;
+  flex-shrink: 0;
+  width: 10px;
+}
+
+.group-name {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: .8px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.group-count {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  background: rgba(124,58,237,.25);
+  color: #a78bfa;
+  flex-shrink: 0;
+  font-weight: 600;
+}
+
+/* ── Env list (children of a group) ──────────────────────────────────────── */
+.env-list {
+  display: none;
+  padding-left: 10px;
+  border-left: 1px solid rgba(124,58,237,.2);
+  margin-left: 12px;
+  margin-bottom: 4px;
+}
+
+.env-list.open { display: block; }
+
+.env-item {
+  padding: 7px 10px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background .15s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 1px;
+}
+
+.env-item:hover  { background: var(--surface2); }
+.env-item.active { background: rgba(0,255,136,.08); border: 1px solid rgba(0,255,136,.2); }
+.env-item.drag-over { border-top: 2px solid var(--accent); }
+.env-item.dragging  { opacity: .35; }
+
+/* Drop zone at the bottom of each env list */
+.env-drop-zone {
+  height: 6px;
+  border-radius: 3px;
+  margin: 2px 0 4px;
+  transition: all .15s;
+}
+
+.env-drop-zone.drag-over {
+  height: 20px;
+  background: rgba(0,255,136,.08);
+  border: 1px dashed var(--accent);
+}
+
+.env-badge {
+  font-size: 9px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: rgba(0,255,136,.1);
+  border: 1px solid rgba(0,255,136,.15);
+  color: var(--accent);
+  margin-left: 4px;
+  font-weight: 400;
+  vertical-align: middle;
+}
+
+/* ── Shared drag handle ───────────────────────────────────────────────────── */
 .drag-handle {
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
   cursor: grab;
-  padding: 0 4px 0 0;
+  padding: 0 2px 0 0;
   flex-shrink: 0;
   opacity: 0;
   transition: opacity .15s;
@@ -139,10 +235,11 @@ body::before {
   user-select: none;
 }
 
-.project-item:hover .drag-handle { opacity: 1; }
-.project-item.active .drag-handle { opacity: .5; }
+.group-header:hover .drag-handle,
+.env-item:hover .drag-handle { opacity: 1; }
+.env-item.active .drag-handle { opacity: .4; }
 
-/* Hover action buttons (duplicate, rename) shown on each project row */
+/* ── Hover action buttons ─────────────────────────────────────────────────── */
 .project-item-actions {
   display: flex;
   gap: 2px;
@@ -151,11 +248,12 @@ body::before {
   transition: opacity .15s;
 }
 
-.project-item:hover .project-item-actions { opacity: 1; }
+.group-header:hover .project-item-actions,
+.env-item:hover .project-item-actions { opacity: 1; }
 
 .project-item-btn {
-  width: 22px;
-  height: 22px;
+  width: 20px;
+  height: 20px;
   border: none;
   background: transparent;
   color: var(--muted);
@@ -169,13 +267,11 @@ body::before {
   padding: 0;
 }
 
-.project-item-btn:hover {
-  background: var(--surface2);
-  color: var(--text);
-}
-
-.project-item-btn.dup:hover  { color: #a78bfa; }
+.project-item-btn:hover     { background: var(--surface2); color: var(--text); }
+.project-item-btn.dup:hover { color: #a78bfa; }
 .project-item-btn.edit:hover { color: var(--accent); }
+.project-item-btn.del:hover  { color: var(--danger); }
+.project-item-btn.add-env:hover { color: var(--accent); }
 
 .project-info { flex: 1; min-width: 0; }
 
@@ -436,6 +532,13 @@ body::before {
   gap: 10px;
 }
 
+.env-title-sep {
+  color: var(--muted);
+  font-weight: 300;
+  margin: 0 4px;
+  font-size: 18px;
+}
+
 .env-title .tag {
   font-family: var(--mono);
   font-size: 11px;
@@ -683,6 +786,15 @@ body::before {
 }
 
 .form-input:focus { border-color: rgba(0,255,136,.5); }
+
+select.form-input {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%236b6b80'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 28px;
+  cursor: pointer;
+}
 
 .form-actions {
   display: flex;

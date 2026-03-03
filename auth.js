@@ -40,7 +40,11 @@ async function chooseFolder() {
     setTimeout(() => $('#masterPwInput').trigger('focus'), 80);
   } catch (e) {
     if (e.name !== 'AbortError') {
-      $('#folderError').text('Could not open folder. Try again.');
+      const msg = e.name === 'SecurityError'
+        ? 'Permission denied. Make sure the page is served over localhost or https://, not file://.'
+        : `Could not open folder: ${e.message || e.name}`;
+      $('#folderError').text(msg);
+      console.error('[chooseFolder]', e);
     }
   }
 }
@@ -68,7 +72,9 @@ async function unlock() {
     await restoreSidebarWidth();
 
     // Always start with a clean slate — no leftover content from a previous session
-    currentProject = null;
+    currentEnv   = null;
+    currentGroup = null;
+    openGroups.clear();
     $('#editorArea').empty().hide();
     $('#topbar').hide();
     $('#emptyState').css('display', 'flex');
@@ -90,7 +96,9 @@ async function unlock() {
  */
 function lockVault() {
   masterPassword = null;
-  currentProject = null;
+  currentEnv     = null;
+  currentGroup   = null;
+  openGroups.clear();
 
   // Reset the editor / main panel
   $('#editorArea').empty().hide();

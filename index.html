@@ -4,6 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>ENV Vault</title>
+  <link rel="icon" type="image/svg+xml" href="favicon.svg" />
   <link rel="stylesheet" href="styles.css" />
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 </head>
@@ -29,7 +30,7 @@
     <div class="lock-error" id="folderError"></div>
   </div>
 
-  <!-- Step 2 – enter master password (hidden until folder is chosen) -->
+  <!-- Step 2 – enter master password -->
   <div class="lock-step" id="stepPassword" style="display:none">
     <div class="chosen-folder-hint">
       Vault folder: <strong id="chosenFolder">—</strong>
@@ -46,7 +47,7 @@
   </div>
 
   <div class="lock-note">
-    Each project is stored as an individual AES-GCM encrypted <code>.vault</code> file.<br />
+    Each env file is stored as an individual AES-GCM encrypted <code>.vault</code> file.<br />
     Nothing is sent to any server. 🛡️
   </div>
 </div>
@@ -90,7 +91,11 @@
   <div class="main">
     <div class="topbar" id="topbar" style="display:none">
       <div class="topbar-left">
-        <div class="breadcrumb">vault / <span id="topbarTitle">—</span></div>
+        <div class="breadcrumb">
+          <span id="topbarGroupName" style="color:var(--muted)">—</span>
+          <span style="color:var(--muted)"> › </span>
+          <span id="topbarTitle">—</span>
+        </div>
         <div class="raw-toggle">
           <button class="raw-tab active" id="tabKv"  onclick="setMode('kv')">Key-Value</button>
           <button class="raw-tab"        id="tabRaw" onclick="setMode('raw')">Raw</button>
@@ -98,7 +103,7 @@
       </div>
       <div class="topbar-actions">
         <button class="btn btn-ghost"   onclick="showRenameProject()" title="Rename / edit description">✏️ Rename</button>
-        <button class="btn btn-ghost"   onclick="duplicateProject()" title="Duplicate this project">⧉ Duplicate</button>
+        <button class="btn btn-ghost"   onclick="duplicateProject()" title="Duplicate this env">⧉ Duplicate</button>
         <button class="btn btn-ghost"   onclick="copyAll()">⎘ Copy All</button>
         <button class="btn btn-ghost"   onclick="exportEnv()">↓ Export</button>
         <button class="btn btn-primary" onclick="saveProject()">✓ Save</button>
@@ -110,9 +115,9 @@
       <!-- Empty state -->
       <div class="empty-state" id="emptyState">
         <div class="empty-icon">📂</div>
-        <div class="empty-title">No project selected</div>
+        <div class="empty-title">No env selected</div>
         <div class="empty-desc">
-          Create a new project from the sidebar to start managing your .env files securely.
+          Create a project from the sidebar, then add env files (prod, staging, dev…).
         </div>
         <button class="btn btn-primary" onclick="showAddProject()" style="margin-top:8px">
           + New Project
@@ -126,18 +131,18 @@
 </div>
 
 <!-- ============================================================
-     ADD PROJECT MODAL
+     ADD PROJECT (GROUP) MODAL
      ============================================================ -->
 <div class="modal-overlay" id="addModal">
   <div class="modal">
-    <div class="modal-title">➕ New Project</div>
+    <div class="modal-title">📁 New Project</div>
     <div class="form-group">
       <label class="form-label">Project Name</label>
-      <input class="form-input" id="newProjectName" placeholder="e.g. my-next-app" />
+      <input class="form-input" id="newProjectName" placeholder="e.g. toto.com" />
     </div>
     <div class="form-group">
       <label class="form-label">Description (optional)</label>
-      <input class="form-input" id="newProjectDesc" placeholder="e.g. Production API keys" />
+      <input class="form-input" id="newProjectDesc" placeholder="e.g. Main website" />
     </div>
     <div class="form-actions">
       <button class="btn btn-ghost"   onclick="closeModal('addModal')">Cancel</button>
@@ -147,18 +152,39 @@
 </div>
 
 <!-- ============================================================
-     RENAME PROJECT MODAL
+     ADD ENV MODAL
      ============================================================ -->
-<div class="modal-overlay" id="renameModal">
+<div class="modal-overlay" id="addEnvModal">
   <div class="modal">
-    <div class="modal-title">✏️ Rename Project</div>
+    <div class="modal-title">➕ New Env File</div>
     <div class="form-group">
-      <label class="form-label">Project Name</label>
-      <input class="form-input" id="renameProjectName" placeholder="e.g. my-next-app" />
+      <label class="form-label">Environment Name</label>
+      <input class="form-input" id="newEnvName" placeholder="e.g. prod, staging, dev" />
     </div>
     <div class="form-group">
       <label class="form-label">Description (optional)</label>
-      <input class="form-input" id="renameProjectDesc" placeholder="e.g. Production API keys" />
+      <input class="form-input" id="newEnvDesc" placeholder="e.g. Production API keys" />
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-ghost"   onclick="closeModal('addEnvModal')">Cancel</button>
+      <button class="btn btn-primary" onclick="addEnv()">Create Env</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============================================================
+     RENAME MODAL  (shared for group and env)
+     ============================================================ -->
+<div class="modal-overlay" id="renameModal">
+  <div class="modal">
+    <div class="modal-title">✏️ Rename</div>
+    <div class="form-group">
+      <label class="form-label">Name</label>
+      <input class="form-input" id="renameProjectName" placeholder="e.g. toto.com" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Description (optional)</label>
+      <input class="form-input" id="renameProjectDesc" placeholder="" />
     </div>
     <div class="form-actions">
       <button class="btn btn-ghost"   onclick="closeModal('renameModal')">Cancel</button>
@@ -175,7 +201,7 @@
     <div class="modal-title">↑ Import .vault File</div>
     <div class="form-group">
       <label class="form-label">Vault File</label>
-      <button class="file-pick-btn" onclick="document.getElementById('importFileInput').click()">
+      <button class="file-pick-btn" onclick="$('#importFileInput').click()">
         <span>📂</span>
         <span id="importFileName">No file chosen</span>
       </button>
@@ -186,8 +212,12 @@
              placeholder="password used to encrypt this file" />
     </div>
     <div class="form-group">
-      <label class="form-label">Project Name</label>
-      <input class="form-input" id="importNameInput" placeholder="e.g. my-next-app" />
+      <label class="form-label">Env Name</label>
+      <input class="form-input" id="importNameInput" placeholder="e.g. prod" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Import into Project</label>
+      <select class="form-input" id="importGroupSelect"></select>
     </div>
     <div class="lock-error" id="importError" style="min-height:18px;margin-top:4px"></div>
     <div class="form-actions">
@@ -216,39 +246,25 @@
 <script src="projects.js"></script>
 <script src="auth.js"></script>
 
-<!-- Bootstrap: event wiring that needs the DOM to be ready -->
+<!-- Bootstrap: event wiring -->
 <script>
-  // Close modal when clicking the overlay backdrop
-  $('#addModal').on('click', function (e) {
-    if (e.target === this) closeModal('addModal');
+  // Close modals on backdrop click
+  ['addModal', 'addEnvModal', 'renameModal', 'importModal'].forEach(id => {
+    $('#' + id).on('click', function (e) {
+      if (e.target === this) closeModal(id);
+    });
   });
 
-  // Submit new project on Enter key
-  $('#newProjectName').on('keydown', e => {
-    if (e.key === 'Enter') addProject();
-  });
-
-  // Close import modal on backdrop click
-  $('#importModal').on('click', function (e) {
-    if (e.target === this) closeModal('importModal');
-  });
-
-  // Close rename modal on backdrop click
-  $('#renameModal').on('click', function (e) {
-    if (e.target === this) closeModal('renameModal');
-  });
-
-  // Submit rename on Enter key
+  // Enter-key shortcuts
+  $('#newProjectName').on('keydown', e => { if (e.key === 'Enter') addProject(); });
+  $('#newEnvName').on('keydown',     e => { if (e.key === 'Enter') addEnv(); });
   $('#renameProjectName, #renameProjectDesc').on('keydown', e => {
     if (e.key === 'Enter') confirmRenameProject();
   });
-
-  // Submit import on Enter key (from password or name field)
   $('#importPwInput, #importNameInput').on('keydown', e => {
     if (e.key === 'Enter') importProject();
   });
 
-  /** Go back to the folder-selection step. */
   function resetToFolderStep() {
     $('#stepFolder').css('display', 'flex');
     $('#stepPassword').hide();
