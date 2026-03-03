@@ -1,151 +1,124 @@
 /**
  * editor.js
- * Key-value / raw editor logic for the currently selected env.
+ * Key-value / raw / txt editor logic for the currently selected env.
  * Depends on: storage.js, ui.js
  */
 
-// ── App-level state ──────────────────────────────────────────────────────────
+// -- State --------------------------------------------------------------------
 
-/** The env object currently open in the editor, or null. */
-let currentEnv = null;
-
-/** The group that owns currentEnv, or null. */
-let currentGroup = null;
-
-/** Current view mode: 'kv' or 'raw'. */
-let editMode = 'kv';
-
-/** Set of row indices whose values are currently revealed. */
+let currentEnv   = null;   // The env object open in the editor
+let currentGroup = null;   // The group that owns currentEnv
+let editMode     = 'kv';   // 'kv' or 'raw'
 let revealedRows = new Set();
 
-// Keep legacy alias so any remaining references to currentProject still work
-Object.defineProperty(window, 'currentProject', {
-  get() { return currentEnv; },
-  set(v) { currentEnv = v; },
-});
-
-// ── Sensitive-key detection ──────────────────────────────────────────────────
+// -- Sensitive-key detection --------------------------------------------------
 
 const SENSITIVE_KEYWORDS = ['secret', 'key', 'token', 'pass', 'pwd', 'auth', 'private'];
 
 function isSensitive(key) {
   const lower = key.toLowerCase();
-  return SENSITIVE_KEYWORDS.some(word => lower.includes(word));
+  return SENSITIVE_KEYWORDS.some(w => lower.includes(w));
 }
 
-// ── Mode switching ───────────────────────────────────────────────────────────
+// -- Unified sync: flush current editor state back to currentEnv.vars ---------
+//
+// This is the SINGLE place that reads DOM inputs back into memory.
+// Call it before saving, switching envs, duplicating, exporting, etc.
+
+function syncCurrentEnv() {
+  if (!currentEnv) return;
+
+  if (currentEnv.type === 'txt') {
+    const $ta = $('#txtTextarea');
+    if ($ta.length) currentEnv.vars = $ta.val();
+    return;
+  }
+
+  if (editMode === 'kv') {
+    // Read KV table inputs into currentEnv.vars
+    currentEnv.vars = [];
+    $('.kv-row[data-idx]').each(function () {
+      const k = $(this).find('.kv-key-inp').val().trim();
+      const v = $(this).find('.kv-val-inp').val();
+      const c = $(this).find('.kv-cmt-inp').val();
+      if (k) currentEnv.vars.push({ k, v, c });
+    });
+  } else {
+    // Parse raw textarea into currentEnv.vars
+    const $ta = $('#rawTextarea');
+    if (!$ta.length) return;
+    const oldVars = currentEnv.vars;
+    currentEnv.vars = [];
+    for (const line of $ta.val().split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eqIdx = trimmed.indexOf('=');
+      if (eqIdx < 0) continue;
+      const k = trimmed.slice(0, eqIdx).trim();
+      const v = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
+      if (k) currentEnv.vars.push({ k, v, c: oldVars.find(e => e.k === k)?.c ?? '' });
+    }
+  }
+}
+
+// -- Mode switching -----------------------------------------------------------
 
 function setMode(mode) {
-  if (currentEnv && currentEnv.type === 'txt') return; // txt files don't have kv/raw tabs
-  if (mode === 'raw') syncKvToRaw();
-  else                syncRawToKv();
+  if (currentEnv?.type === 'txt') return;
+  syncCurrentEnv();
   editMode = mode;
   $('#tabKv').toggleClass('active', mode === 'kv');
   $('#tabRaw').toggleClass('active', mode === 'raw');
   renderEditor();
 }
 
-// ── Sync helpers ─────────────────────────────────────────────────────────────
-
-function syncKvToRaw() {
-  if (!currentEnv) return;
-  if (currentEnv.type === 'txt') return; // txt files sync separately
-  currentEnv.vars = [];
-  $('.kv-row[data-idx]').each(function () {
-    const k = $(this).find('.kv-key-inp').val().trim();
-    const v = $(this).find('.kv-val-inp').val();
-    const c = $(this).find('.kv-cmt-inp').val();
-    if (k) currentEnv.vars.push({ k, v, c });
-  });
-}
-
-function syncRawToKv() {
-  if (!currentEnv) return;
-  if (currentEnv.type === 'txt') return; // txt files sync separately
-  const $textarea = $('#rawTextarea');
-  if (!$textarea.length) return;
-  const oldVars = currentEnv.vars;
-  currentEnv.vars = [];
-  $textarea.val().split('\n').forEach(line => {
-    line = line.trim();
-    if (!line || line.startsWith('#')) return;
-    const eqIdx = line.indexOf('=');
-    if (eqIdx < 0) return;
-    const k = line.slice(0, eqIdx).trim();
-    const v = line.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, '');
-    const existing = oldVars.find(e => e.k === k);
-    if (k) currentEnv.vars.push({ k, v, c: existing?.c ?? '' });
-  });
-}
-
-/** Sync the txt textarea back into currentEnv.vars (a plain string for txt files). */
-function syncTxtToMem() {
-  if (!currentEnv || currentEnv.type !== 'txt') return;
-  const $ta = $('#txtTextarea');
-  if ($ta.length) currentEnv.vars = $ta.val();
-}
-
-// ── Rendering ────────────────────────────────────────────────────────────────
+// -- Rendering ----------------------------------------------------------------
 
 function renderEditor() {
   const $area = $('#editorArea');
   if (!currentEnv) { $area.empty(); return; }
 
-  if (currentEnv.type === 'txt') {
-    // Show/hide topbar tabs — txt files only have a single textarea view
-    $('#tabKv, #tabRaw').hide();
-    $('#topbarCopyAll, #topbarExport').hide();
-    $area.html(renderTxtEditor());
-  } else {
-    $('#tabKv, #tabRaw').show();
-    $('#topbarCopyAll, #topbarExport').show();
-    $area.html(editMode === 'kv' ? renderKvEditor() : renderRawEditor());
-  }
+  const isTxt = currentEnv.type === 'txt';
+  $('#tabKv, #tabRaw').toggle(!isTxt);
+  $('#topbarCopyAll, #topbarExport').toggle(!isTxt);
+
+  if (isTxt)             $area.html(renderTxtEditor());
+  else if (editMode === 'kv') $area.html(renderKvEditor());
+  else                        $area.html(renderRawEditor());
 }
 
 function renderKvEditor() {
   const { name, desc, vars } = currentEnv;
   const sensitiveCount = vars.filter(v => isSensitive(v.k)).length;
+  const groupName = currentGroup ? escHtml(currentGroup.name) : '';
+
   return `
     <div class="env-header">
       <div class="env-title">
-        ${escHtml(currentGroup ? currentGroup.name : '')}
-        <span class="env-title-sep">›</span>
-        ${escHtml(name)}
+        ${groupName}<span class="env-title-sep">›</span>${escHtml(name)}
         <span class="tag">.env</span>
       </div>
     </div>
     <div class="env-stats">
-      <div class="stat">
-        <div class="stat-icon">📦</div>
-        <div><div class="stat-val">${vars.length}</div><div class="stat-label">Variables</div></div>
-      </div>
-      <div class="stat">
-        <div class="stat-icon">🔑</div>
-        <div><div class="stat-val">${sensitiveCount}</div><div class="stat-label">Sensitive</div></div>
-      </div>
-      <div class="stat">
-        <div class="stat-icon">📝</div>
-        <div><div class="stat-val">${desc ? escHtml(desc) : '—'}</div><div class="stat-label">Description</div></div>
-      </div>
+      ${stat('📦', vars.length, 'Variables')}
+      ${stat('🔑', sensitiveCount, 'Sensitive')}
+      ${stat('📝', desc ? escHtml(desc) : '—', 'Description')}
     </div>
     <div class="kv-table">
-      <div class="kv-header">
-        <div>KEY</div><div>VALUE</div><div>COMMENT</div><div>ACTIONS</div>
-      </div>
+      <div class="kv-header"><div>KEY</div><div>VALUE</div><div>COMMENT</div><div>ACTIONS</div></div>
       ${vars.map((v, i) => renderKvRow(v, i)).join('')}
       <button class="add-row-btn" onclick="addKvRow()">+ Add Variable</button>
     </div>`;
 }
 
 function renderRawEditor() {
-  const raw = currentEnv.vars.map(v => `${v.k}=${v.v}`).join('\n');
+  const raw = currentEnv.vars.map(v => `${v.k}="${v.v}"`).join('\n');
+  const groupName = currentGroup ? escHtml(currentGroup.name) : '';
+
   return `
     <div class="env-header">
       <div class="env-title">
-        ${escHtml(currentGroup ? currentGroup.name : '')}
-        <span class="env-title-sep">›</span>
-        ${escHtml(currentEnv.name)}
+        ${groupName}<span class="env-title-sep">›</span>${escHtml(currentEnv.name)}
         <span class="tag">raw</span>
       </div>
     </div>
@@ -158,55 +131,44 @@ function renderRawEditor() {
 
 function renderTxtEditor() {
   const { name, desc } = currentEnv;
-  const content = typeof currentEnv.vars === 'string' ? currentEnv.vars : '';
+  const content   = typeof currentEnv.vars === 'string' ? currentEnv.vars : '';
   const lineCount = content ? content.split('\n').length : 0;
+  const groupName = currentGroup ? escHtml(currentGroup.name) : '';
+
   return `
     <div class="env-header">
       <div class="env-title">
-        ${escHtml(currentGroup ? currentGroup.name : '')}
-        <span class="env-title-sep">›</span>
-        ${escHtml(name)}
+        ${groupName}<span class="env-title-sep">›</span>${escHtml(name)}
         <span class="tag txt-tag">.txt</span>
       </div>
     </div>
     <div class="env-stats">
-      <div class="stat">
-        <div class="stat-icon">📝</div>
-        <div><div class="stat-val">${lineCount}</div><div class="stat-label">Lines</div></div>
-      </div>
-      <div class="stat">
-        <div class="stat-icon">🔒</div>
-        <div><div class="stat-val">Encrypted</div><div class="stat-label">Storage</div></div>
-      </div>
-      <div class="stat">
-        <div class="stat-icon">💬</div>
-        <div><div class="stat-val">${desc ? escHtml(desc) : '—'}</div><div class="stat-label">Description</div></div>
-      </div>
+      ${stat('📝', lineCount, 'Lines')}
+      ${stat('🔒', 'Encrypted', 'Storage')}
+      ${stat('💬', desc ? escHtml(desc) : '—', 'Description')}
     </div>
     <textarea class="txt-editor" id="txtTextarea" spellcheck="false"
       placeholder="Type anything here — FTP credentials, API notes, SSH keys…\nThis file is stored encrypted.">${escHtml(content)}</textarea>`;
 }
 
+/** Render a single stat block (used in KV and TXT headers). */
+function stat(icon, value, label) {
+  return `<div class="stat"><div class="stat-icon">${icon}</div><div><div class="stat-val">${value}</div><div class="stat-label">${label}</div></div></div>`;
+}
+
 function renderKvRow(v, i) {
-  const isRevealed = revealedRows.has(i);
-  const sensitive  = isSensitive(v.k);
-  const inputType  = sensitive && !isRevealed ? 'password' : 'text';
-  const revealBtn  = sensitive
-    ? `<button class="icon-btn vis" onclick="toggleReveal(${i})" title="${isRevealed ? 'Hide' : 'Reveal'}">${isRevealed ? '🙈' : '👁'}</button>`
+  const revealed  = revealedRows.has(i);
+  const sensitive = isSensitive(v.k);
+  const inputType = sensitive && !revealed ? 'password' : 'text';
+  const revealBtn = sensitive
+    ? `<button class="icon-btn vis" onclick="toggleReveal(${i})" title="${revealed ? 'Hide' : 'Reveal'}">${revealed ? '🙈' : '👁'}</button>`
     : '';
+
   return `
     <div class="kv-row" data-idx="${i}">
-      <div class="kv-cell">
-        <input class="kv-input kv-key kv-key-inp" value="${escHtml(v.k)}" placeholder="KEY_NAME" spellcheck="false" />
-      </div>
-      <div class="kv-cell">
-        <input class="kv-input kv-val kv-val-inp" type="${inputType}"
-          value="${escHtml(v.v)}" placeholder="value" spellcheck="false" />
-      </div>
-      <div class="kv-cell">
-        <input class="kv-input kv-cmt kv-cmt-inp" value="${escHtml(v.c ?? '')}"
-          placeholder="optional note…" spellcheck="false" />
-      </div>
+      <div class="kv-cell"><input class="kv-input kv-key kv-key-inp" value="${escHtml(v.k)}" placeholder="KEY_NAME" spellcheck="false" /></div>
+      <div class="kv-cell"><input class="kv-input kv-val kv-val-inp" type="${inputType}" value="${escHtml(v.v)}" placeholder="value" spellcheck="false" /></div>
+      <div class="kv-cell"><input class="kv-input kv-cmt kv-cmt-inp" value="${escHtml(v.c ?? '')}" placeholder="optional note…" spellcheck="false" /></div>
       <div class="kv-cell kv-actions">
         ${revealBtn}
         <button class="icon-btn" onclick="copyVal(${i})" title="Copy value">⎘</button>
@@ -215,30 +177,29 @@ function renderKvRow(v, i) {
     </div>`;
 }
 
-// ── Row actions ──────────────────────────────────────────────────────────────
+// -- Row actions --------------------------------------------------------------
 
 function toggleReveal(i) {
-  if (revealedRows.has(i)) revealedRows.delete(i);
-  else                     revealedRows.add(i);
-  syncKvToRaw();
+  revealedRows.has(i) ? revealedRows.delete(i) : revealedRows.add(i);
+  syncCurrentEnv();
   renderEditor();
 }
 
 function addKvRow() {
-  syncKvToRaw();
+  syncCurrentEnv();
   currentEnv.vars.push({ k: '', v: '', c: '' });
   renderEditor();
   $('.kv-key-inp').last().trigger('focus');
 }
 
 function deleteKvRow(i) {
-  syncKvToRaw();
+  syncCurrentEnv();
   currentEnv.vars.splice(i, 1);
   renderEditor();
 }
 
 function copyVal(i) {
-  syncKvToRaw();
+  syncCurrentEnv();
   const variable = currentEnv.vars[i];
   if (variable) {
     navigator.clipboard.writeText(variable.v);
@@ -246,13 +207,11 @@ function copyVal(i) {
   }
 }
 
-// ── Toolbar actions ──────────────────────────────────────────────────────────
+// -- Toolbar actions ----------------------------------------------------------
 
 async function saveProject() {
   if (!currentEnv) return;
-  if (currentEnv.type === 'txt') syncTxtToMem();
-  else if (editMode === 'kv')    syncKvToRaw();
-  else                           syncRawToKv();
+  syncCurrentEnv();
   await saveVault(getMasterPassword());
   renderProjects();
   showToast('Saved & encrypted ✓');
@@ -260,38 +219,29 @@ async function saveProject() {
 
 function copyAll() {
   if (!currentEnv) return;
-  let text;
-  if (currentEnv.type === 'txt') {
-    syncTxtToMem();
-    text = typeof currentEnv.vars === 'string' ? currentEnv.vars : '';
-  } else {
-    if (editMode === 'kv') syncKvToRaw();
-    text = currentEnv.vars.map(v => `${v.k}=${v.v}`).join('\n');
-  }
+  syncCurrentEnv();
+  const text = currentEnv.type === 'txt'
+    ? (typeof currentEnv.vars === 'string' ? currentEnv.vars : '')
+    : currentEnv.vars.map(v => `${v.k}="${v.v}"`).join('\n');
   navigator.clipboard.writeText(text);
   showToast('Copied to clipboard');
 }
 
 function exportEnv() {
   if (!currentEnv) return;
-  let text, filename;
-  if (currentEnv.type === 'txt') {
-    syncTxtToMem();
-    text     = typeof currentEnv.vars === 'string' ? currentEnv.vars : '';
-    filename = `${currentEnv.name}.txt`;
-  } else {
-    if (editMode === 'kv') syncKvToRaw();
-    text     = currentEnv.vars.map(v => `${v.k}=${v.v}`).join('\n');
-    filename = `.env.${currentEnv.name}`;
-  }
-  const blob = new Blob([text], { type: 'text/plain' });
+  syncCurrentEnv();
+
+  const isTxt    = currentEnv.type === 'txt';
+  const text     = isTxt ? (typeof currentEnv.vars === 'string' ? currentEnv.vars : '') : currentEnv.vars.map(v => `${v.k}="${v.v}"`).join('\n');
+  const filename = isTxt ? `${currentEnv.name}.txt` : `.env.${currentEnv.name}`;
+
   const a    = document.createElement('a');
-  a.href     = URL.createObjectURL(blob);
+  a.href     = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
   a.download = filename;
   a.click();
   showToast('Exported ✓');
 }
 
-// Alias used by topbar Rename button
+// Aliases used by topbar buttons
 function showRenameProject() { showRenameEnv(); }
-function duplicateProject()  { duplicateEnv();  }
+function duplicateProject()  { duplicateEnv(); }

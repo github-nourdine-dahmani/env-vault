@@ -267,33 +267,24 @@
 <script>
   // Close modals on backdrop click
   ['addModal', 'addEnvModal', 'renameModal', 'importModal'].forEach(id => {
-    $('#' + id).on('click', function (e) {
-      if (e.target === this) closeModal(id);
-    });
+    $('#' + id).on('click', function (e) { if (e.target === this) closeModal(id); });
   });
 
-  // File-type picker in addEnvModal
+  // File-type picker toggle
   $('#fileTypePicker .file-type-option').on('click', function () {
     $('#fileTypePicker .file-type-option').removeClass('active');
-    $(this).addClass('active');
-    $(this).find('input[type=radio]').prop('checked', true);
+    $(this).addClass('active').find('input[type=radio]').prop('checked', true);
   });
 
-  // Enter-key shortcuts
-  $('#newProjectName').on('keydown', e => { if (e.key === 'Enter') addProject(); });
-  $('#newEnvName').on('keydown',     e => { if (e.key === 'Enter') addEnv(); });
-  $('#renameProjectName, #renameProjectDesc').on('keydown', e => {
-    if (e.key === 'Enter') confirmRenameProject();
-  });
-  $('#importPwInput, #importNameInput').on('keydown', e => {
-    if (e.key === 'Enter') importProject();
-  });
-
-  function resetToFolderStep() {
-    $('#stepFolder').css('display', 'flex');
-    $('#stepPassword').hide();
-    $('#masterPwInput').val('');
-    $('#passwordError').text('');
+  // Enter-key shortcuts for modals
+  const enterBindings = {
+    '#newProjectName': addProject,
+    '#newEnvName': addEnv,
+    '#renameProjectName, #renameProjectDesc': confirmRenameProject,
+    '#importPwInput, #importNameInput': importProject,
+  };
+  for (const [sel, fn] of Object.entries(enterBindings)) {
+    $(sel).on('keydown', e => { if (e.key === 'Enter') fn(); });
   }
 </script>
 
