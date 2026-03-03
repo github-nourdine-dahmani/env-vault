@@ -719,6 +719,91 @@ body::before {
 
 .raw-editor:focus { border-color: rgba(0,255,136,.4); }
 
+/* ── Txt (free-text) editor ───────────────────────────────────────────────── */
+.txt-editor {
+  width: 100%;
+  flex: 1;
+  min-height: 400px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  line-height: 1.8;
+  resize: vertical;
+  outline: none;
+  transition: border-color .2s;
+}
+
+.txt-editor:focus { border-color: rgba(255,170,0,.4); }
+
+/* .txt badge — amber instead of green */
+.env-badge-txt {
+  background: rgba(255,170,0,.12);
+  border-color: rgba(255,170,0,.2);
+  color: var(--warn);
+}
+
+/* .txt tag in the editor header */
+.tag.txt-tag {
+  background: rgba(255,170,0,.12);
+  border-color: rgba(255,170,0,.2);
+  color: var(--warn);
+}
+
+/* ── File-type picker (addEnvModal) ──────────────────────────────────────── */
+.file-type-picker {
+  display: flex;
+  gap: 10px;
+}
+
+.file-type-option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 8px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+  user-select: none;
+}
+
+.file-type-option:hover {
+  border-color: var(--muted);
+  background: var(--surface2);
+}
+
+.file-type-option.active {
+  border-color: var(--accent);
+  background: rgba(0,255,136,.06);
+}
+
+.file-type-option[data-value="txt"].active {
+  border-color: var(--warn);
+  background: rgba(255,170,0,.06);
+}
+
+.file-type-icon { font-size: 22px; }
+
+.file-type-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: .5px;
+}
+
+.file-type-desc {
+  font-size: 10px;
+  color: var(--muted);
+  text-align: center;
+}
+
 /* ============================================================
    MODAL
    ============================================================ */

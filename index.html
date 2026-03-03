@@ -104,8 +104,8 @@
       <div class="topbar-actions">
         <button class="btn btn-ghost"   onclick="showRenameProject()" title="Rename / edit description">✏️ Rename</button>
         <button class="btn btn-ghost"   onclick="duplicateProject()" title="Duplicate this env">⧉ Duplicate</button>
-        <button class="btn btn-ghost"   onclick="copyAll()">⎘ Copy All</button>
-        <button class="btn btn-ghost"   onclick="exportEnv()">↓ Export</button>
+        <button class="btn btn-ghost" id="topbarCopyAll" onclick="copyAll()">⎘ Copy All</button>
+        <button class="btn btn-ghost" id="topbarExport"  onclick="exportEnv()">↓ Export</button>
         <button class="btn btn-primary" onclick="saveProject()">✓ Save</button>
         <button class="btn btn-danger"  onclick="deleteProject()">✕</button>
       </div>
@@ -156,10 +156,27 @@
      ============================================================ -->
 <div class="modal-overlay" id="addEnvModal">
   <div class="modal">
-    <div class="modal-title">➕ New Env File</div>
+    <div class="modal-title">➕ New File</div>
     <div class="form-group">
-      <label class="form-label">Environment Name</label>
-      <input class="form-input" id="newEnvName" placeholder="e.g. prod, staging, dev" />
+      <label class="form-label">File Type</label>
+      <div class="file-type-picker" id="fileTypePicker">
+        <label class="file-type-option active" data-value="env">
+          <input type="radio" name="newEnvType" id="newEnvType" value="env" checked style="display:none" />
+          <span class="file-type-icon">⚙️</span>
+          <span class="file-type-label">.env</span>
+          <span class="file-type-desc">Key-value pairs</span>
+        </label>
+        <label class="file-type-option" data-value="txt">
+          <input type="radio" name="newEnvType" value="txt" style="display:none" />
+          <span class="file-type-icon">📝</span>
+          <span class="file-type-label">.txt</span>
+          <span class="file-type-desc">Free text notes</span>
+        </label>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">File Name</label>
+      <input class="form-input" id="newEnvName" placeholder="e.g. prod, staging, ftp-creds" />
     </div>
     <div class="form-group">
       <label class="form-label">Description (optional)</label>
@@ -167,7 +184,7 @@
     </div>
     <div class="form-actions">
       <button class="btn btn-ghost"   onclick="closeModal('addEnvModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="addEnv()">Create Env</button>
+      <button class="btn btn-primary" onclick="addEnv()">Create File</button>
     </div>
   </div>
 </div>
@@ -253,6 +270,13 @@
     $('#' + id).on('click', function (e) {
       if (e.target === this) closeModal(id);
     });
+  });
+
+  // File-type picker in addEnvModal
+  $('#fileTypePicker .file-type-option').on('click', function () {
+    $('#fileTypePicker .file-type-option').removeClass('active');
+    $(this).addClass('active');
+    $(this).find('input[type=radio]').prop('checked', true);
   });
 
   // Enter-key shortcuts

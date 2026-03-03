@@ -68,6 +68,12 @@ function renderGroupItem(g) {
 /** Build HTML for one env row inside a group. */
 function renderEnvItem(g, e) {
   const isActive = currentEnv && currentEnv.id === e.id;
+  const isTxt    = e.type === 'txt';
+  const badgeClass = isTxt ? 'env-badge env-badge-txt' : 'env-badge';
+  const badgeLabel = isTxt ? '.txt' : '.env';
+  const meta = isTxt
+    ? `${typeof e.vars === 'string' ? e.vars.split('\n').filter(Boolean).length : 0} line${(typeof e.vars === 'string' ? e.vars.split('\n').filter(Boolean).length : 0) !== 1 ? 's' : ''}`
+    : `${Array.isArray(e.vars) ? e.vars.length : 0} var${(Array.isArray(e.vars) ? e.vars.length : 0) !== 1 ? 's' : ''}`;
   return `
     <div class="env-item ${isActive ? 'active' : ''}"
          draggable="true"
@@ -76,8 +82,8 @@ function renderEnvItem(g, e) {
          onclick="selectEnv('${g.id}', '${e.id}')">
       <span class="drag-handle env-drag" title="Drag to move env">⠿</span>
       <div class="project-info">
-        <div class="project-name">${escHtml(e.name)}<span class="env-badge">.vault</span></div>
-        <div class="project-meta">${e.vars.length} var${e.vars.length !== 1 ? 's' : ''}</div>
+        <div class="project-name">${escHtml(e.name)}<span class="${badgeClass}">${badgeLabel}</span></div>
+        <div class="project-meta">${meta}</div>
       </div>
       <div class="project-item-actions">
         <button class="project-item-btn edit" title="Rename"
@@ -130,8 +136,16 @@ function selectEnv(groupId, envId) {
   $('#emptyState').hide();
   $('#topbarGroupName').text(group.name);
   $('#topbarTitle').text(env.name);
-  $('#tabKv').addClass('active');
-  $('#tabRaw').removeClass('active');
+
+  // Adjust topbar for file type
+  if (env.type === 'txt') {
+    $('#tabKv, #tabRaw').hide();
+    $('#topbarCopyAll, #topbarExport').hide();
+  } else {
+    $('#tabKv').show().addClass('active');
+    $('#tabRaw').show().removeClass('active');
+    $('#topbarCopyAll, #topbarExport').show();
+  }
 
   renderProjects();
   renderEditor();
@@ -366,6 +380,10 @@ async function deleteGroup(groupId) {
 function showAddEnv(groupId) {
   $('#newEnvName').val('');
   $('#newEnvDesc').val('');
+  // Reset type picker to 'env'
+  $('#fileTypePicker .file-type-option').removeClass('active');
+  $('#fileTypePicker .file-type-option[data-value="env"]').addClass('active');
+  $('input[name="newEnvType"][value="env"]').prop('checked', true);
   $('#addEnvModal').data('target-group', groupId);
   openModal('addEnvModal');
   setTimeout(() => $('#newEnvName').trigger('focus'), 100);
@@ -375,6 +393,7 @@ async function addEnv() {
   const $modal  = $('#addEnvModal');
   const groupId = $modal.data('target-group');
   const name    = $('#newEnvName').val().trim();
+  const type    = $('input[name="newEnvType"]:checked').val() || 'env'; // 'env' or 'txt'
   if (!name) return;
 
   const group = getVaultData().groups.find(g => g.id === groupId);
@@ -382,11 +401,13 @@ async function addEnv() {
 
   // Save unsaved edits first
   if (currentEnv) {
-    if (editMode === 'kv') syncKvToRaw();
-    else                   syncRawToKv();
+    if (currentEnv.type === 'txt') syncTxtToMem();
+    else if (editMode === 'kv')    syncKvToRaw();
+    else                           syncRawToKv();
   }
 
-  const env = { id: genId(), name, desc: $('#newEnvDesc').val().trim(), vars: [] };
+  // vars is [] for env files, '' for txt files
+  const env = { id: genId(), name, desc: $('#newEnvDesc').val().trim(), type, vars: type === 'txt' ? '' : [] };
   group.envs.push(env);
   openGroups.add(groupId);
   closeModal('addEnvModal');
@@ -436,14 +457,18 @@ async function confirmRenameProject() {
 
 async function duplicateEnv() {
   if (!currentEnv || !currentGroup) return;
-  if (editMode === 'kv') syncKvToRaw();
-  else                   syncRawToKv();
+  if (currentEnv.type === 'txt') syncTxtToMem();
+  else if (editMode === 'kv')    syncKvToRaw();
+  else                           syncRawToKv();
 
   const copy = {
     id:   genId(),
     name: currentEnv.name + ' (copy)',
     desc: currentEnv.desc,
-    vars: currentEnv.vars.map(v => ({ ...v })),
+    type: currentEnv.type ?? 'env',
+    vars: currentEnv.type === 'txt'
+      ? (typeof currentEnv.vars === 'string' ? currentEnv.vars : '')
+      : currentEnv.vars.map(v => ({ ...v })),
   };
 
   const envs   = currentGroup.envs;
